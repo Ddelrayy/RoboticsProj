@@ -116,19 +116,24 @@ while robot.step(timestep) != -1:
     # Compute wheel displacements
     delta_left = left_pos - prev_left_pos
     delta_right = right_pos - prev_right_pos
+    #You get the current encoder readings and calculate how much each wheel has rotated since the last step.
+
+
 
     # Update previous values
     prev_left_pos = left_pos
     prev_right_pos = right_pos
 
     # Estimate motion based on wheel differences
-    ds = (delta_right + delta_left) * (MAX_SPEED_MS / 2.0)  # displacement
-    dtheta = (delta_right - delta_left) * (MAX_SPEED_MS / AXLE_LENGTH)  # rotation
+    ds = (delta_right + delta_left) * (MAX_SPEED_MS / 2.0)  # displacement, HOW MUCH robot moved
+    dtheta = (delta_right - delta_left) * (MAX_SPEED_MS / AXLE_LENGTH)  # rotation, how much it rotated
+    
 
     # Update robot pose
     pose_x += ds * math.cos(pose_theta + dtheta / 2.0)
     pose_y += ds * math.sin(pose_theta + dtheta / 2.0)
     pose_theta += dtheta
+    # we use the formulas 
 
     # Normalize heading angle to [-pi, pi]
     pose_theta = (pose_theta + math.pi) % (2 * math.pi) - math.pi
