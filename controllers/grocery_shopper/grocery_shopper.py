@@ -43,12 +43,6 @@ for i, part_name in enumerate(part_names):
     robot_parts[part_name].setPosition(float(target_pos[i]))
     robot_parts[part_name].setVelocity(robot_parts[part_name].getMaxVelocity() / 2.0)
 
-# Enable wheel encoders
-left_encoder = robot_parts["wheel_left_joint"].getPositionSensor()
-right_encoder = robot_parts["wheel_right_joint"].getPositionSensor()
-left_encoder.enable(timestep)
-right_encoder.enable(timestep)
-
 # Enable gripper encoders (position sensors)
 left_gripper_enc=robot.getDevice("gripper_left_finger_joint_sensor")
 right_gripper_enc=robot.getDevice("gripper_right_finger_joint_sensor")
@@ -75,13 +69,9 @@ lidar.enablePointCloud()
 display = robot.getDevice("display")
 
 # Odometry
-pose_x     = 0.0
-pose_y     = 0.0
-pose_theta = 0.0
-# Variables to store previous encoder readings for odometry
-prev_left_pos = None
-prev_right_pos = None
-
+pose_x     = 0
+pose_y     = 0
+pose_theta = 0
 
 vL = 0
 vR = 0
@@ -100,46 +90,9 @@ map = None
 
 gripper_status="closed"
 
-# Initialize encoder values
-prev_left_pos = left_encoder.getValue()
-prev_right_pos = right_encoder.getValue()
-
 # Main Loop
 while robot.step(timestep) != -1:
     
-     # === ODOMETRY LOCALIZATION STEP ===
-
-    # Get current encoder readings
-    left_pos = left_encoder.getValue()
-    right_pos = right_encoder.getValue()
-
-    # Compute wheel displacements
-    delta_left = left_pos - prev_left_pos
-    delta_right = right_pos - prev_right_pos
-    #You get the current encoder readings and calculate how much each wheel has rotated since the last step.
-
-
-
-    # Update previous values
-    prev_left_pos = left_pos
-    prev_right_pos = right_pos
-
-    # Estimate motion based on wheel differences
-    ds = (delta_right + delta_left) * (MAX_SPEED_MS / 2.0)  # displacement, HOW MUCH robot moved
-    dtheta = (delta_right - delta_left) * (MAX_SPEED_MS / AXLE_LENGTH)  # rotation, how much it rotated
-    
-
-    # Update robot pose
-    pose_x += ds * math.cos(pose_theta + dtheta / 2.0)
-    pose_y += ds * math.sin(pose_theta + dtheta / 2.0)
-    pose_theta += dtheta
-    # we use the formulas 
-
-    # Normalize heading angle to [-pi, pi]
-    pose_theta = (pose_theta + math.pi) % (2 * math.pi) - math.pi
-
-    # Print estimated pose
-    print(f"[ODOMETRY] Pose: x = {pose_x:.2f} m, y = {pose_y:.2f} m, θ = {math.degrees(pose_theta):.1f}°")\
     
     robot_parts["wheel_left_joint"].setVelocity(vL)
     robot_parts["wheel_right_joint"].setVelocity(vR)
