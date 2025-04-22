@@ -29,7 +29,7 @@ LIDAR_ANGLE_BINS = 667
 LIDAR_SENSOR_MAX_RANGE = 5.5 
 LIDAR_ANGLE_RANGE = math.radians(240)
 
-mode = 'picknplace'
+mode = 'planner'
 # occupancy_map = np.zeros((MAP_SIZE, MAP_SIZE))
 
 
@@ -120,14 +120,11 @@ def update_pose():
     n = compass.getValues()
     pose_theta = np.arctan2(n[0], n[1])
 
-    # pose_theta = math.atan2(n[0], n[2])
-    # pose_theta = math.atan2(n[1], n[0])
-
 def lidar_to_world(offset, distance):
     if distance == float('inf') or distance > LIDAR_SENSOR_MAX_RANGE:
         return None, None
     global lidar_offsets, pose_theta, pose_x, pose_y
-    lidar_offset = 0.202  # meters forward
+    lidar_offset = 0.202 
     sensor_x = pose_x + lidar_offset * np.cos(pose_theta)
     sensor_y = pose_y + lidar_offset * np.sin(pose_theta)
 
@@ -139,29 +136,6 @@ def lidar_to_world(offset, distance):
     # wy = pose_y + distance * np.sin(offset)
     
     return wx, wy
-
-def bresenham_line(x0, y0, x1, y1):
-    points = []
-    dx = abs(x1 - x0)
-    dy = abs(y1 - y0)
-    sx = 1 if x0 < x1 else -1
-    sy = 1 if y0 < y1 else -1
-    err = dx - dy
-    # err2 = 0
-    
-    while True:
-        points.append((x0, y0))
-
-        if x0 == x1 and y0 == y1:
-            break
-        e2 = err * 2
-        if e2 > -dy:
-            err -= dy
-            x0 += sx
-        if e2 < dx:
-            err += dx
-            y0 += sy
-    return points
             
 
 def update_map():
@@ -171,7 +145,7 @@ def update_map():
         
 
     for i, rho in enumerate(lidar_sensor_readings):
-        if rho > LIDAR_SENSOR_MAX_RANGE or math.isinf(rho):
+        if rho > LIDAR_SENSOR_MAX_RANGE or rho < 0.2 or math.isinf(rho):
             continue
         alpha = lidar_offsets[i]
         lidar_offset_w = pose_theta + alpha
@@ -181,16 +155,18 @@ def update_map():
                 continue
         
         map_x, map_y = world_to_map(wx, wy)
-        # robot_x, robot_y = world_to_map(pose_x, pose_y)
         
         if 0 <= map_x < 360 and 0 <= map_y < 360:
-                # occupancy_map[map_y, map_x] = 1
                 occupancy_map[map_y, map_x] += 5e-3
+                if occupancy_map[map_y, map_x] < 0.15:
+                    continue 
 
                 if occupancy_map[map_y, map_x] > 1:
                     occupancy_map[map_y, map_x] = 1
                 
                 g = occupancy_map[map_y, map_x]
+                if g < 0.2:
+                    continue
                 color = int((g * 256**2 + g * 256 + g) * 255)
                 
                 display.setColor(color)
@@ -218,7 +194,7 @@ def move_to_waypoint(goal):
     dy = goal_y - pose_y
     rho = math.hypot(dx, dy)
     alpha = math.atan2(dy, dx) - pose_theta
-    alpha = math.atan2(math.sin(alpha), math.cos(alpha))  # Normalize angle
+    alpha = math.atan2(math.sin(alpha), math.cos(alpha))  
 
     angle_threshold = 0.15
     distance_threshold = 0.4
@@ -298,7 +274,6 @@ def simulate_pick_and_place():
 
 # Main Loop
 while robot.step(timestep) != -1:
-    # print("Current mode:", mode)
 
     
     update_pose()
@@ -362,7 +337,6 @@ while robot.step(timestep) != -1:
         simulate_pick_and_place()
         break
 
-    # Odometry update (backup only)
     pose_x += (vL+vR)/2/MAX_SPEED*MAX_SPEED_MS*timestep/1000.0*math.cos(pose_theta)
     pose_y -= (vL+vR)/2/MAX_SPEED*MAX_SPEED_MS*timestep/1000.0*math.sin(pose_theta)
     pose_theta += (vR-vL)/AXLE_LENGTH/MAX_SPEED*MAX_SPEED_MS*timestep/1000.0
