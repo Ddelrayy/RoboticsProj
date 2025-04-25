@@ -26,7 +26,7 @@ MAP_HEIGHT = 360
 
 occupancy_map = np.zeros((MAP_WIDTH, MAP_HEIGHT))
 LIDAR_ANGLE_BINS = 667
-LIDAR_SENSOR_MAX_RANGE = 5.5 
+LIDAR_SENSOR_MAX_RANGE = 6
 LIDAR_ANGLE_RANGE = math.radians(240)
 
 mode = 'planner'
@@ -93,11 +93,9 @@ vL = 0
 vR = 0
 
 lidar_sensor_readings = []
-# lidar_offsets = np.linspace(-LIDAR_ANGLE_RANGE/2., +LIDAR_ANGLE_RANGE/2., LIDAR_ANGLE_BINS)
-# lidar_offsets = lidar_offsets[83:len(lidar_offsets)-83] # Only keep lidar readings not blocked by robot chassis
 lidar_offsets = np.linspace(-LIDAR_ANGLE_RANGE/2, LIDAR_ANGLE_RANGE/2, LIDAR_ANGLE_BINS, endpoint=True)
-# lidar_offsets = lidar_offsets[83:len(lidar_offsets)-83]
 lidar_offsets = lidar_offsets[::-1].copy()
+
 
 
 # occupancy_map = np.zeros((MAP_SIZE, MAP_SIZE))
@@ -106,6 +104,9 @@ explore_targets_world = [
     (-5, 0), (-5, 5.5), (12.4, 5.5), (12.4, 2.2),
     (-5.5, 2.2), (-5.5, -2), (12.5, -2), (12.5, -5.5), (-6.3, -5.5)
 ]
+# explore_targets_world = [
+#     (-5, 0), (-5, 5.75), (12.4, 5.75)
+# ]
 explore_targets =  explore_targets_world
 explore_state = 0
 obstacle_positions = set()
@@ -120,20 +121,18 @@ def update_pose():
     n = compass.getValues()
     pose_theta = np.arctan2(n[0], n[1])
 
+
+
+
 def lidar_to_world(offset, distance):
     if distance == float('inf') or distance > LIDAR_SENSOR_MAX_RANGE:
         return None, None
     global lidar_offsets, pose_theta, pose_x, pose_y
-    lidar_offset = 0.202 
-    sensor_x = pose_x + lidar_offset * np.cos(pose_theta)
-    sensor_y = pose_y + lidar_offset * np.sin(pose_theta)
-
-    wx = sensor_x + distance * np.cos(offset)
-    wy = sensor_y + distance * np.sin(offset)
+   
 
     
-    # wx = pose_x + distance * np.cos(offset)
-    # wy = pose_y + distance * np.sin(offset)
+    wx = pose_x + distance * np.cos(offset)
+    wy = pose_y + distance * np.sin(offset)
     
     return wx, wy
             
@@ -141,29 +140,34 @@ def lidar_to_world(offset, distance):
 def update_map():
     global occupancy_map
     lidar_sensor_readings = lidar.getRangeImage()
-    # lidar_sensor_readings = lidar_sensor_readings[83:len(lidar_sensor_readings)-83]
         
 
     for i, rho in enumerate(lidar_sensor_readings):
-        if rho > LIDAR_SENSOR_MAX_RANGE or rho < 0.2 or math.isinf(rho):
+        if math.isinf(rho) or math.isnan(rho) or rho < 0.5 or rho > 4.5:
             continue
+
+        if abs(lidar_offsets[i]) > math.radians(80):  
+            continue
+
         alpha = lidar_offsets[i]
         lidar_offset_w = pose_theta + alpha
         wx, wy = lidar_to_world(lidar_offset_w, rho)
         
         if wx is None or wy is None:
-                continue
+            continue
+
         
         map_x, map_y = world_to_map(wx, wy)
         
         if 0 <= map_x < 360 and 0 <= map_y < 360:
-                occupancy_map[map_y, map_x] += 5e-3
-                if occupancy_map[map_y, map_x] < 0.15:
+                occupancy_map[map_y, map_x] += 0.007
+                if occupancy_map[map_y, map_x] < 0.2:
                     continue 
 
                 if occupancy_map[map_y, map_x] > 1:
                     occupancy_map[map_y, map_x] = 1
                 
+
                 g = occupancy_map[map_y, map_x]
                 if g < 0.2:
                     continue
@@ -171,15 +175,14 @@ def update_map():
                 
                 display.setColor(color)
                 display.drawPixel(map_x, map_y)
-        if (map_x, map_y) not in obstacle_positions:
-            obstacle_positions.add((map_x, map_y))
 
-                
 
-def save_map(thresh=0.5):
-    global occupancy_map
-    binary_map = (occupancy_map > thresh).astype(int)
+
+def save_map():
+    binary_map = (occupancy_map > 0.5).astype(int)
     np.save("map.npy", binary_map)
+  
+
 
 def load_map():
     return np.load("map.npy") if os.path.exists("map.npy") else np.zeros((MAP_WIDTH, MAP_HEIGHT))
@@ -215,60 +218,81 @@ def move_to_waypoint(goal):
     vL = max(-MAX_SPEED, min(MAX_SPEED, vL))
     vR = max(-MAX_SPEED, min(MAX_SPEED, vR))
 
+    display.imageSave(None,"map.png") 
     return vL, vR
 
 
+
 def world_to_map(x_world, y_world):
-    x_map = int((x_world + 14) * (MAP_WIDTH / 28)) 
-    y_map = int((7 - y_world) * (MAP_HEIGHT / 14)) 
-    return max(0, min(x_map, MAP_WIDTH - 1)), max(0, min(y_map, MAP_HEIGHT - 1))
+    x_map = int((x_world + 15) * RESOLUTION_X)
+    y_map = int((8.05 - y_world) * RESOLUTION_Y)
+    return max(0, min(x_map, 359)), max(0, min(y_map, 359))
+
 
 
 def map_to_world(x_map, y_map):
-    x_world = (x_map / (MAP_WIDTH / 28)) - 14
-    y_world = 7 - (y_map / (MAP_HEIGHT / 14))
+    x_world = (x_map / (RESOLUTION_X)) - 15
+    y_world = 8.05 - (y_map / ( RESOLUTION_Y))
     return x_world, y_world
 
 
 
-
 def plan_path(start, end):
-    kernel_size = 10
+
+    obstacle_mask = (occupancy_map >0.2).astype(int)
+    kernel_size = 11
     kernel = np.ones((kernel_size, kernel_size))
-    config_space = convolve2d(occupancy_map, kernel, mode='same', boundary='fill', fillvalue=1)
-    config_space = (config_space > 0).astype(int)  
+    config_space = convolve2d(obstacle_mask, kernel, mode='same', boundary='fill', fillvalue=1)
+    config_space = (config_space > 0).astype(int)
+    
+
 
     from heapq import heappush, heappop
-    visited, pq, costs, parent = set(), [], {start: 0}, {start: None}
+    visited = set()
+    pq = []
+    costs = {start: 0}
+    parent = {start: None}
     heappush(pq, (0, start))
-    dirs = [(-1,0), (1,0), (0,-1), (0,1)]
-    while pq:
-        c, cur = heappop(pq)
-        if cur in visited: continue
-        visited.add(cur)
-        if cur == end: break
-        for dx, dy in dirs:
-            nbr = (cur[0]+dx, cur[1]+dy)
-            if 0<=nbr[0]<MAP_WIDTH and 0<=nbr[1]<MAP_HEIGHT and config_space[nbr]==0:
-                nc = c+1
-                if nbr not in costs or nc < costs[nbr]:
-                    costs[nbr] = nc
-                    parent[nbr] = cur
-                    heappush(pq, (nc, nbr))
-    path, n = [], end
-    while n: path.append(n); n = parent.get(n)
-    return path[::-1]
 
-def simulate_pick_and_place():
-    print("Picking and placing object...")
-    robot_parts["gripper_left_finger_joint"].setPosition(0)
-    robot_parts["gripper_right_finger_joint"].setPosition(0)
-    robot.step(timestep * 10)
-    robot_parts["arm_1_joint"].setPosition(0.0)
-    robot.step(timestep * 20)
-    robot_parts["gripper_left_finger_joint"].setPosition(0.045)
-    robot_parts["gripper_right_finger_joint"].setPosition(0.045)
-    robot.step(timestep * 10)
+    dirs = [(-1,0), (1,0), (0,-1), (0,1), 
+            (-1,-1), (-1,1), (1,-1), (1,1)]
+    
+    def heuristic(a, b):
+        return math.hypot(b[0] - a[0], b[1] - a[1])
+    
+    while pq:
+        _, cur = heappop(pq)
+        if cur == end:
+            break
+        if cur in visited or config_space[cur[0], cur[1]] == 1:
+            continue
+        visited.add(cur)
+        
+        for dx, dy in dirs:
+            nbr = (cur[0]+dx, cur[1] + dy)
+            if 0 <= nbr[0] < MAP_WIDTH and 0 <= nbr[1] < MAP_HEIGHT:
+                if config_space[nbr[0], nbr[1]] == 1:
+                    # print(f"Skipping obstacle at {nbr}")
+                    continue
+
+                
+                move_cost = 1.0 if dx == 0 or dy == 0 else math.sqrt(2)
+                g = costs[cur] + move_cost
+                
+                if nbr not in costs or g < costs[nbr]:
+                    costs[nbr] = g
+                    parent[nbr] = cur
+                    heappush(pq, (g + heuristic(nbr, end), nbr))
+                    
+    path = []
+    n = end
+    while n is not None:
+        path.append(n)
+        n = parent.get(n)
+    # print("Path preview:", path[:5])
+
+    return path[::-1], config_space
+
 
 
 
@@ -281,7 +305,9 @@ while robot.step(timestep) != -1:
     # print(f"Current Target: {explore_targets[explore_state]}")
 
     if mode == 'mapping':
-        update_map()
+        if abs(vL - vR) < 0.2: 
+            update_map()
+        # update_map()
         if explore_state < len(explore_targets):
             vL, vR = move_to_waypoint(explore_targets[explore_state])
             robot_parts["wheel_left_joint"].setVelocity(vL)
@@ -290,53 +316,47 @@ while robot.step(timestep) != -1:
             save_map()
             print("map saved")
             break
+        # save_map()
 
     elif mode == 'planner':
         occupancy_map = load_map()
-        plt.imshow(occupancy_map.T, cmap='gray_r', origin='lower')
-        plt.title("Occupancy Map (White = Free, Black = Occupied)")
-        plt.xlabel("X (Map)")
-        plt.ylabel("Y (Map)")
-        plt.grid(False)
-        plt.show()
-        # start = (int((pose_x + 12) * 30), int((pose_y + 12) * 30))
-        # end = (int((2.0 + 12) * 30), int((3.0 + 12) * 30))
-        # path = plan_path(start, end)
-        # print(gps.getValues()[0])
-        # print(gps.getValues()[1])
         
-        start_x, start_y = gps.getValues()[0], gps.getValues()[2]
+        start_x, start_y = gps.getValues()[0], gps.getValues()[1]
         start_px, start_py = world_to_map(start_x, start_y)
+        
 
-        goal_world = (-6.3, -5.5)
+        # goal_world = (-6.3, -5.5)
+        goal_world = (4.32, -2)
         goal_px, goal_py = world_to_map(goal_world[0], goal_world[1])
+        
+        
         print("Start (map):", start_px, start_py)
         print("Goal  (map):", goal_px, goal_py)
+        
+        start = start_py, start_px
+        end = goal_py, goal_px
 
-        path = plan_path((start_px, start_py), (goal_px, goal_py))
+        path, config_space = plan_path(start, end)
 
         np.save("path.npy", path)
         print("Saved path with", len(path), "points")
-        break
-    elif mode == 'autonomous':
-        path = np.load("path.npy")
-        # if state >= len(path): break
-        # vL, vR = move_to_waypoint(path[state])
-        px, py = path[state]
-        goal_x, goal_y = map_to_world(px, py)
+        plt.figure(figsize=(6, 6))
+        plt.imshow(occupancy_map.T, cmap='gray_r', origin='lower')
+        plt.title("Occupancy Map with Planned Path\n(White = Free, Black = Occupied)")
+        plt.xlabel("X (Map)")
+        plt.ylabel("Y (Map)")
+        plt.grid(False)
 
-        vL, vR = move_to_waypoint((goal_x, goal_y))
-        robot_parts["wheel_left_joint"].setVelocity(vL)
-        robot_parts["wheel_right_joint"].setVelocity(vR)
-    elif mode == 'picknplace':
-        path = np.load("path.npy")
-        for wp in path:
-            vL, vR = move_to_waypoint(wp)
-            robot_parts["wheel_left_joint"].setVelocity(vL)
-            robot_parts["wheel_right_joint"].setVelocity(vR)
-        simulate_pick_and_place()
-        break
+        for (x, y) in path:
+            plt.plot(x, y, 'r.', markersize=2)
 
-    pose_x += (vL+vR)/2/MAX_SPEED*MAX_SPEED_MS*timestep/1000.0*math.cos(pose_theta)
-    pose_y -= (vL+vR)/2/MAX_SPEED*MAX_SPEED_MS*timestep/1000.0*math.sin(pose_theta)
-    pose_theta += (vR-vL)/AXLE_LENGTH/MAX_SPEED*MAX_SPEED_MS*timestep/1000.0
+        plt.plot(start_py, start_px, 'go', markersize=6, label="Start")
+        plt.plot(goal_py, goal_px, 'bo', markersize=6, label="Goal")
+        plt.legend()
+        plt.show()
+        break
+    
+
+    # pose_x += (vL+vR)/2/MAX_SPEED*MAX_SPEED_MS*timestep/1000.0*math.cos(pose_theta)
+    # pose_y -= (vL+vR)/2/MAX_SPEED*MAX_SPEED_MS*timestep/1000.0*math.sin(pose_theta)
+    # pose_theta += (vR-vL)/AXLE_LENGTH/MAX_SPEED*MAX_SPEED_MS*timestep/1000.0
