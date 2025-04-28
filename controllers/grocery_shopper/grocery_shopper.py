@@ -29,7 +29,7 @@ LIDAR_ANGLE_BINS = 667
 LIDAR_SENSOR_MAX_RANGE = 6
 LIDAR_ANGLE_RANGE = math.radians(240)
 
-mode = 'planner'
+mode = 'mapping'
 # occupancy_map = np.zeros((MAP_SIZE, MAP_SIZE))
 
 
@@ -295,14 +295,35 @@ def plan_path(start, end):
 
 
 
+def detect_yellow_objects():
+    image = camera.getImage()
+    np_img = np.frombuffer(image, np.uint8).reshape((camera_height, camera_width, 4))
+    np_img = np_img[:, :, :3]
+
+    hsv_img = cv2.cvtColor(np_img, cv2.COLOR_BGR2HSV)
+    lower_yellow = np.array([20, 100, 100])
+    upper_yellow = np.array([30, 255, 255])
+    mask = cv2.inRange(hsv_img, lower_yellow, upper_yellow)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for contour in contours:
+        area = cv2.contourArea(contour)
+        if area > 100:
+            M = cv2.moments(contour)
+            if M["m00"] != 0:
+                cx = int(M["m10"] / M["m00"])
+                cy = int(M["m01"] / M["m00"])
+                print(f"Yellow object detected at (x={cx}, y={cy})")
+
 
 # Main Loop
 while robot.step(timestep) != -1:
 
     
     update_pose()
-    # print(f"Pose: ({pose_x:.2f}, {pose_y:.2f})")
-    # print(f"Current Target: {explore_targets[explore_state]}")
+
+    detect_yellow_objects()
+
 
     if mode == 'mapping':
         if abs(vL - vR) < 0.2: 
