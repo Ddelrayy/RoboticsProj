@@ -70,6 +70,7 @@ camera.recognitionEnable(timestep)
 camera_width = camera.getWidth()
 camera_height = camera.getHeight()
 
+
 # Enable GPS and compass localization
 gps = robot.getDevice("gps")
 gps.enable(timestep)
@@ -101,8 +102,8 @@ lidar_offsets = lidar_offsets[::-1].copy()
 # occupancy_map = np.zeros((MAP_SIZE, MAP_SIZE))
 state = 0
 explore_targets_world = [
-    (-5, 0), (-5, 5.5), (12.4, 5.5), (12.4, 2.2),
-    (-5.5, 2.2), (-5.5, -2), (12.5, -2), (12.5, -5.5), (-6.3, -5.5)
+    (-5, 0), (-5, 5.75), (12.4, 5.75), (12.4, 1.85),
+    (-5.5, 1.85), (-5.5, -2), (12.5, -2), (12.5, -5.5), (-6.3, -5.5)
 ]
 # explore_targets_world = [
 #     (-5, 0), (-5, 5.75), (12.4, 5.75)
@@ -203,7 +204,6 @@ def move_to_waypoint(goal):
     distance_threshold = 0.4
 
     if rho < distance_threshold:
-        print("Reached waypoint!")
         explore_state += 1
         return 0.0, 0.0
 
@@ -294,26 +294,81 @@ def plan_path(start, end):
     return path[::-1], config_space
 
 
+detected_yellow_objects = []
+
+# def detect_yellow_objects():
+#     global detected_yellow_objects
+
+#     image = camera.getImage()
+#     np_img = np.frombuffer(image, np.uint8).reshape((camera_height, camera_width, 4))
+#     np_img = np_img[:, :, :3]  
+
+#     hsv_img = cv2.cvtColor(np_img, cv2.COLOR_BGR2HSV)
+#     lower_yellow = np.array([25, 200, 200])
+#     upper_yellow = np.array([35, 255, 255])
+#     mask = cv2.inRange(hsv_img, lower_yellow, upper_yellow)
+
+#     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+#     for contour in contours:
+#         area = cv2.contourArea(contour)
+#         if area > 30: 
+#             M = cv2.moments(contour)
+#             if M["m00"] != 0:
+#                 cx = int(M["m10"] / M["m00"])
+#                 cy = int(M["m01"] / M["m00"])
+
+#                 already_detected = False
+#                 for (prev_cx, prev_cy) in detected_yellow_objects:
+#                     distance = math.hypot(prev_cx - cx, prev_cy - cy)
+#                     if distance < 30: 
+#                         already_detected = True
+#                         break
+
+#                 if not already_detected:
+#                     detected_yellow_objects.append((cx, cy))
+#                     print(f"Yellow object detected at (x={cx}, y={cy})")
+
 
 def detect_yellow_objects():
+    global detected_yellow_objects
+
     image = camera.getImage()
     np_img = np.frombuffer(image, np.uint8).reshape((camera_height, camera_width, 4))
     np_img = np_img[:, :, :3]
 
     hsv_img = cv2.cvtColor(np_img, cv2.COLOR_BGR2HSV)
-    lower_yellow = np.array([20, 100, 100])
-    upper_yellow = np.array([30, 255, 255])
+    lower_yellow = np.array([25, 200, 200])
+    upper_yellow = np.array([35, 255, 255])
     mask = cv2.inRange(hsv_img, lower_yellow, upper_yellow)
 
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
     for contour in contours:
         area = cv2.contourArea(contour)
-        if area > 100:
+        if area > 30:
             M = cv2.moments(contour)
             if M["m00"] != 0:
-                cx = int(M["m10"] / M["m00"])
-                cy = int(M["m01"] / M["m00"])
-                print(f"Yellow object detected at (x={cx}, y={cy})")
+                cx = int(M["m10"] / M["m00"]) 
+                cy = int(M["m01"] / M["m00"]) 
+
+                already_detected = False
+                for (prev_cx, prev_cy) in detected_yellow_objects:
+                    if math.hypot(prev_cx - cx, prev_cy - cy) < 30:
+                        already_detected = True
+                        break
+                if already_detected:
+                    continue
+
+                detected_yellow_objects.append((cx, cy))
+
+                x_offset_norm = (cx - (camera_width / 2)) / (camera_width / 2)
+                shelf_offset = 1.3 * x_offset_norm  
+
+                object_x = pose_x + shelf_offset * math.cos(pose_theta + math.pi / 2)
+                object_y = pose_y + shelf_offset * math.sin(pose_theta + math.pi / 2)
+
+                print(f"Yellow object estimated at WORLD position: x={object_x:.2f}, y={object_y:.2f}")
 
 
 # Main Loop
