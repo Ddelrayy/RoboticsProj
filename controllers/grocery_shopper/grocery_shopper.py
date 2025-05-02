@@ -314,7 +314,7 @@ def detect_yellow_objects():
 
     for contour in contours:
         area = cv2.contourArea(contour)
-        if area > 15:
+        if area > 20:
             M = cv2.moments(contour)
             if M["m00"] != 0:
                 cx = int(M["m10"] / M["m00"]) 
@@ -332,7 +332,7 @@ def detect_yellow_objects():
 
                 x_angle = (cx - camera_width / 2) / (camera_width / 2) * (HFOV / 2)
                 y_angle = (cy - camera_height / 2) / (camera_height / 2) * (VFOV / 2)
-                est_distance = 1.3 
+                est_distance = 1.3
 
                 rel_x = est_distance * math.tan(x_angle)
                 rel_y = est_distance / math.cos(x_angle)  
@@ -343,7 +343,10 @@ def detect_yellow_objects():
 
                 print(f"Yellow object estimated at WORLD position: x={object_x:.2f}, y={object_y:.2f}")
 
-
+# yellow objects 
+# {1: (3.5, 7.14), 2: (3.5, 3.59), 3: (2.62, 3.59), 4: (0.77, 0.37), 5: (-3.26, 3.63), 
+# 6: (-2.67, 0.2), 7: (-2.77, 0.31), 8: (2.34, -3.53),9: (4.4, -3.53), 10: (-1.33, -4.05)}
+yellow_objects = [(3.5, 7.14), (3.5, 3.59), (2.62, 5.59), (0.77, 0.37), (-3.26, 3.63), (-2.67, 0.2), (-2.77, 0.31), (2.34, -3.53), (4.4, -3.53), (-1.33, -4.05)]
 
 # Main Loop
 while robot.step(timestep) != -1:
